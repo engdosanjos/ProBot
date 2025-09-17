@@ -1,0 +1,22 @@
+{
+  "name": "goals-live-bot-livescore",
+  "version": "1.0.0",
+  "description": "Live goals bot using Livescore.in for data, with online learning and prediction.",
+  "main": "src/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/main.js",
+    "tracker": "node src/tracker/tracker.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "glob": "^7.2.3",
+    "playwright": "^1.54.2",
+    "socket.io": "^4.8.1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
