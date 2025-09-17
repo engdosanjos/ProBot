@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Bot — Painel Live</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#0b0f13; --card:#11161c; --fg:#dfe6ee; --muted:#94a3b8; --accent:#4ade80; --bad:#ef4444; --warn:#f59e0b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial; background: var(--bg); color: var(--fg); }
+    header { padding: 12px 16px; border-bottom: 1px solid #1f2937; display:flex; align-items:center; gap:16px; }
+    h1 { font-size: 16px; margin: 0; letter-spacing:.2px; }
+    main { padding: 16px; display:grid; gap:16px; }
+
+    .grid { display:grid; gap:12px; }
+    @media (min-width:1000px){ .grid-cols-3{grid-template-columns:2fr 1fr 1fr;} .grid-cols-2{grid-template-columns:1fr 1fr;} }
+
+    .card { background: var(--card); border:1px solid #1f2937; border-radius:12px; padding:12px; }
+    .card h2 { font-size:14px; margin:0 0 8px 0; font-weight:600; color:#e5edf7; }
+
+    .kpis { display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; }
+    .kpi { background:#0f141a; border:1px solid #1f2937; border-radius:10px; padding:10px; }
+    .kpi .label { color: var(--muted); font-size:12px; }
+    .kpi .value { font-size: 18px; font-weight: 700; margin-top:4px; }
+    .kpi .value.pos { color: var(--accent); }
+    .kpi .value.neg { color: var(--bad); }
+
+    table { width:100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom:1px solid #1f2937; padding:6px 8px; text-align:left; vertical-align: middle; }
+    th { color:#aab6c5; font-weight:600; }
+    tr:hover td { background: #0f141a; }
+
+    .muted { color: var(--muted); }
+    .pill { display:inline-block; padding:2px 6px; border-radius:999px; font-weight:600; font-size:11px; }
+    .pill.good { background:#05351e; color:#82efb0; }
+    .pill.bad  { background:#3b0a0a; color:#ff9b9b; }
+    .pill.warn { background:#3b2a07; color:#ffd27a; }
+
+    .nowrap { white-space:nowrap; }
+    .right { text-align:right; }
+    .center { text-align:center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚽ Bot — Painel Live</h1>
+    <span class="muted" id="refreshts"></span>
+  </header>
+
+  <main class="grid grid-cols-3">
+    <section class="card" style="grid-column:1 / span 2;">
+      <h2>Jogos em andamento</h2>
+      <div class="kpis" style="margin-bottom:8px">
+        <div class="kpi">
+          <div class="label">Greens</div>
+          <div class="value pos" id="k-greens">0</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Reds</div>
+          <div class="value neg" id="k-reds">0</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Assertividade</div>
+          <div class="value" id="k-acc">0%</div>
+        </div>
+        <div class="kpi">
+          <div class="label">PnL</div>
+          <div class="value" id="k-pnl">0.0u</div>
+        </div>
+      </div>
+      <div style="overflow:auto; max-height: 58vh;">
+        <table id="tbl-live">
+          <thead>
+            <tr>
+              <th>Liga</th>
+              <th>Partida</th>
+              <th class="center">Min</th>
+              <th class="center">Placar</th>
+              <th class="center">Press H</th>
+              <th class="center">Press A</th>
+              <th class="right nowrap">P10</th>
+              <th class="right nowrap">P15</th>
+              <th class="right nowrap">P20</th>
+              <th class="right nowrap">P25</th>
+              <th class="right nowrap">P30</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Previsões em aberto</h2>
+      <div class="muted" id="minprob"></div>
+      <div style="overflow:auto; max-height: 28vh;">
+        <table id="tbl-open">
+          <thead>
+            <tr>
+              <th>Partida</th>
+              <th class="center">Janela</th>
+              <th class="right">Prob</th>
+              <th class="center">Restante</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h2 style="margin-top:10px;">Últimos resultados</h2>
+      <div style="overflow:auto; max-height: 28vh;">
+        <table id="tbl-last">
+          <thead>
+            <tr>
+              <th>Partida</th>
+              <th class="center">Janela</th>
+              <th class="right">Prob@</th>
+              <th class="center">Resultado</th>
+              <th class="right">PnL</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+    const fmtP = (x) => (x == null ? '—' : (Math.round(x * 1000)/10).toFixed(1) + '%');
+    const fmtProb = (x) => (x == null ? '—' : (Math.round(x * 1000)/10).toFixed(1) + '%');
+    const fmtPnL = (x) => (x>=0?'+':'') + (Math.round(x*10)/10).toFixed(1) + 'u';
+
+    async function fetchJson(url) {
+      const r = await fetch(url, { cache: 'no-store' });
+      return r.json();
+    }
+
+    function renderSummary(sum) {
+      $('#k-greens').textContent = sum.greens;
+      $('#k-reds').textContent = sum.reds;
+      $('#k-acc').textContent = (Math.round(sum.accuracy * 1000)/10).toFixed(1) + '%';
+      $('#k-pnl').textContent = fmtPnL(sum.pnl);
+    }
+
+    function renderLive(rows) {
+      const tb = $('#tbl-live tbody');
+      tb.innerHTML = '';
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="muted">${r.league || ''}</td>
+          <td>${r.home || ''} <span class="muted">x</span> ${r.away || ''}</td>
+          <td class="center">${r.minute ?? '—'}</td>
+          <td class="center">${(r.goals_home ?? '?')} - ${(r.goals_away ?? '?')}</td>
+          <td class="center">${r.press_home ?? 0}</td>
+          <td class="center">${r.press_away ?? 0}</td>
+          <td class="right">${fmtProb(r.probs.p10)}</td>
+          <td class="right">${fmtProb(r.probs.p15)}</td>
+          <td class="right">${fmtProb(r.probs.p20)}</td>
+          <td class="right">${fmtProb(r.probs.p25)}</td>
+          <td class="right">${fmtProb(r.probs.p30)}</td>
+        `;
+        tb.appendChild(tr);
+      }
+    }
+
+    function renderOpen(rows, minProb) {
+      $('#minprob').textContent = `limiar atual: ${fmtProb(minProb)}`;
+      const tb = $('#tbl-open tbody');
+      tb.innerHTML = '';
+      for (const r of rows) {
+        const left = Math.max(0, r.deadline_minute - r.current_minute);
+        const badge = left <= 5 ? 'pill warn' : 'pill';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${r.home} <span class="muted">x</span> ${r.away}</td>
+          <td class="center">${r.window_min}'</td>
+          <td class="right"><span class="pill good">${fmtProb(r.prob)}</span></td>
+          <td class="center"><span class="${badge}">${left}'</span></td>
+        `;
+        tb.appendChild(tr);
+      }
+    }
+
+    function renderLast(rows) {
+      const tb = $('#tbl-last tbody');
+      tb.innerHTML = '';
+      for (const r of rows) {
+        const ok = r.outcome === 'GREEN';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${r.home} <span class="muted">x</span> ${r.away}</td>
+          <td class="center">${r.window_min || '—'}'</td>
+          <td class="right">${fmtProb(r.prob)}</td>
+          <td class="center">
+            <span class="pill ${ok?'good':'bad'}">${r.outcome}</span>
+          </td>
+          <td class="right">${fmtPnL(r.pnl || 0)}</td>
+        `;
+        tb.appendChild(tr);
+      }
+    }
+
+    async function tick() {
+      try {
+        const [sum, live, open, last] = await Promise.all([
+          fetchJson('/api/summary'),
+          fetchJson('/api/live'),
+          fetchJson('/api/open-predictions'),
+          fetchJson('/api/recent-results?limit=10')
+        ]);
+
+        if (sum.ok)  renderSummary(sum.data);
+        if (live.ok) renderLive(live.data);
+        if (open.ok) renderOpen(open.data, open.min_prob);
+        if (last.ok) renderLast(last.data);
+        $('#refreshts').textContent = 'Atualizado: ' + new Date().toLocaleTimeString();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    tick();
+    setInterval(tick, 5000);
+  </script>
+</body>
+</html>
